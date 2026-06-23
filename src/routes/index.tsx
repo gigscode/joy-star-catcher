@@ -16,15 +16,24 @@ export const Route = createFileRoute("/")({
   component: JoyCatcher,
 });
 
-const AFFIRMATIONS = [
-  "You are so smart!",
-  "You are a great helper!",
-  "You are deeply loved!",
-  "You are kind!",
-  "You can do hard things!",
-  "You bring joy!",
-  "You are amazing!",
-  "You are brave!",
+import smartAsset from "@/assets/affirmations/you-are-so-smart.mp3.asset.json";
+import helperAsset from "@/assets/affirmations/you-are-a-great-helper.mp3.asset.json";
+import lovedAsset from "@/assets/affirmations/you-are-deeply-loved.mp3.asset.json";
+import kindAsset from "@/assets/affirmations/you-are-kind.mp3.asset.json";
+import hardAsset from "@/assets/affirmations/you-can-do-hard-things.mp3.asset.json";
+import joyAsset from "@/assets/affirmations/you-bring-joy.mp3.asset.json";
+import amazingAsset from "@/assets/affirmations/you-are-amazing.mp3.asset.json";
+import braveAsset from "@/assets/affirmations/you-are-brave.mp3.asset.json";
+
+const AFFIRMATIONS: { text: string; url: string }[] = [
+  { text: "You are so smart!", url: smartAsset.url },
+  { text: "You are a great helper!", url: helperAsset.url },
+  { text: "You are deeply loved!", url: lovedAsset.url },
+  { text: "You are kind!", url: kindAsset.url },
+  { text: "You can do hard things!", url: hardAsset.url },
+  { text: "You bring joy!", url: joyAsset.url },
+  { text: "You are amazing!", url: amazingAsset.url },
+  { text: "You are brave!", url: braveAsset.url },
 ];
 
 const CONFETTI_COLORS = [
@@ -49,24 +58,35 @@ const DANIEL = {
   shoeStripe: "#dc2626",
 };
 
-function speakAffirmation(text: string) {
-  if (typeof window === "undefined" || !window.speechSynthesis) return;
+// Pre-warmed Audio pool for instant playback (no TTS latency)
+const audioCache = new Map<string, HTMLAudioElement>();
+function getAudio(url: string): HTMLAudioElement {
+  let a = audioCache.get(url);
+  if (!a) {
+    a = new Audio(url);
+    a.preload = "auto";
+    audioCache.set(url, a);
+  }
+  return a;
+}
+function primeAudio() {
+  if (typeof window === "undefined") return;
+  AFFIRMATIONS.forEach((a) => {
+    const el = getAudio(a.url);
+    // Unlock on Android by attempting a silent play+pause inside the user gesture
+    el.muted = true;
+    el.play().then(() => { el.pause(); el.currentTime = 0; el.muted = false; }).catch(() => { el.muted = false; });
+  });
+}
+function speakAffirmation(url: string) {
   try {
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    // Daniel is a 5-year-old boy: slightly higher than adult male, not squeaky
-    u.pitch = 1.35;
-    u.rate = 0.95;
-    u.volume = 1;
-    const voices = window.speechSynthesis.getVoices();
-    const preferred =
-      voices.find((v) => /child|kid|boy/i.test(v.name)) ||
-      voices.find((v) => /daniel|aaron|alex|fred|google uk english male/i.test(v.name)) ||
-      voices.find((v) => v.lang.startsWith("en"));
-    if (preferred) u.voice = preferred;
-    window.speechSynthesis.speak(u);
+    const el = getAudio(url);
+    el.currentTime = 0;
+    el.volume = 1;
+    void el.play().catch(() => {});
   } catch {}
 }
+
 
 // A stylized "Daniel" — 5yr boy, orange hoodie, black cargo joggers,
 // black high-top sneakers, messy dark-brown hair, large brown eyes.
