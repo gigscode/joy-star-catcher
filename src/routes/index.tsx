@@ -1,15 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState, Suspense } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
-import { Sky, ContactShadows } from "@react-three/drei";
-import * as THREE from "three";
+import { useEffect, useRef, useState } from "react";
 import { Play, Star, Heart, Smile } from "lucide-react";
+
+import bgSky from "@/assets/images/bg-sky.png";
+import bgHills from "@/assets/images/bg-hills.png";
+import bgGround from "@/assets/images/bg-ground.png";
+import danielIdle from "@/assets/images/daniel-idle.png";
+import danielRun from "@/assets/images/daniel-run.png";
+import danielCatch from "@/assets/images/daniel-catch.png";
+import danielCheer from "@/assets/images/daniel-cheer.png";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Joy Catcher - A Game of Smiles" },
-      { name: "description", content: "A 3D game for kids that catches joy and builds confidence." },
+      { name: "description", content: "A 2D game for kids that catches joy and builds confidence." },
       { name: "viewport", content: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" },
     ],
   }),
@@ -40,24 +45,6 @@ const CONFETTI_COLORS = [
   "#ff3b8b", "#ffd93d", "#6bcB77", "#4d96ff", "#ff9f1c", "#c084fc", "#22d3ee",
 ];
 
-// Daniel palette from the character bible
-const DANIEL = {
-  skin: "#f5cfa8",
-  cheek: "#f4a896",
-  hair: "#3a2a21",
-  brow: "#2a1a14",
-  eyeWhite: "#ffffff",
-  iris: "#5a3a22",
-  pupil: "#0f0a08",
-  hoodie: "#d97706",
-  hoodieShade: "#b45309",
-  drawstring: "#fffaf0",
-  pants: "#1a1a1a",
-  shoe: "#111111",
-  shoeSole: "#ffffff",
-  shoeStripe: "#dc2626",
-};
-
 // Pre-warmed Audio pool for instant playback (no TTS latency)
 const audioCache = new Map<string, HTMLAudioElement>();
 function getAudio(url: string): HTMLAudioElement {
@@ -73,7 +60,6 @@ function primeAudio() {
   if (typeof window === "undefined") return;
   AFFIRMATIONS.forEach((a) => {
     const el = getAudio(a.url);
-    // Unlock on Android by attempting a silent play+pause inside the user gesture
     el.muted = true;
     el.play().then(() => { el.pause(); el.currentTime = 0; el.muted = false; }).catch(() => { el.muted = false; });
   });
@@ -87,261 +73,137 @@ function speakAffirmation(url: string) {
   } catch {}
 }
 
+function useTransparentImage(src: string, threshold = 240): string {
+  const [processedSrc, setProcessedSrc] = useState<string>(src);
 
-// A stylized "Daniel" — 5yr boy, orange hoodie, black cargo joggers,
-// black high-top sneakers, messy dark-brown hair, large brown eyes.
-function Character({ targetX }: { targetX: number }) {
-  const group = useRef<THREE.Group>(null);
-  const torso = useRef<THREE.Group>(null);
-  useFrame((_, dt) => {
-    if (!group.current) return;
-    group.current.position.x += (targetX - group.current.position.x) * Math.min(1, dt * 6);
-    const t = performance.now() / 400;
-    group.current.position.y = Math.sin(t) * 0.06;
-    if (torso.current) torso.current.rotation.y = Math.sin(t * 0.5) * 0.12;
-  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    
+    let isMounted = true;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      
+      ctx.drawImage(img, 0, 0);
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imgData.data;
+      const w = canvas.width;
+      const h = canvas.height;
 
-  // pre-computed messy hair tufts (deterministic)
-  const tufts: Array<[number, number, number, number]> = [
-    [0, 0.28, -0.05, 0.34],
-    [-0.22, 0.22, 0.05, 0.26],
-    [0.22, 0.22, 0.05, 0.26],
-    [-0.12, 0.34, 0.12, 0.22],
-    [0.12, 0.34, 0.12, 0.22],
-    [-0.28, 0.05, -0.05, 0.24],
-    [0.28, 0.05, -0.05, 0.24],
-    [0, 0.18, 0.28, 0.22],
-    [-0.18, 0.4, 0.0, 0.18],
-    [0.2, 0.38, -0.1, 0.18],
-  ];
+      const visited = new Uint8Array(w * h);
+      const queue: number[] = [];
 
-  return (
-    <group ref={group} position={[0, 0, 0]}>
-      <group ref={torso}>
-        {/* legs — black cargo joggers */}
-        <mesh position={[-0.18, 0.28, 0]} castShadow>
-          <cylinderGeometry args={[0.16, 0.18, 0.55, 16]} />
-          <meshStandardMaterial color={DANIEL.pants} roughness={0.85} />
-        </mesh>
-        <mesh position={[0.18, 0.28, 0]} castShadow>
-          <cylinderGeometry args={[0.16, 0.18, 0.55, 16]} />
-          <meshStandardMaterial color={DANIEL.pants} roughness={0.85} />
-        </mesh>
+      const isWhite = (x: number, y: number) => {
+        const idx = (y * w + x) * 4;
+        const r = data[idx];
+        const g = data[idx + 1];
+        const b = data[idx + 2];
+        return r > threshold && g > threshold && b > threshold;
+      };
 
-        {/* shoes — black high-tops with white sole + red stripe */}
-        {[-0.18, 0.18].map((x) => (
-          <group key={x} position={[x, 0.02, 0.06]}>
-            <mesh castShadow>
-              <boxGeometry args={[0.26, 0.18, 0.42]} />
-              <meshStandardMaterial color={DANIEL.shoe} roughness={0.6} />
-            </mesh>
-            <mesh position={[0, -0.08, 0]}>
-              <boxGeometry args={[0.28, 0.05, 0.44]} />
-              <meshStandardMaterial color={DANIEL.shoeSole} />
-            </mesh>
-            <mesh position={[0, -0.05, 0]}>
-              <boxGeometry args={[0.29, 0.015, 0.45]} />
-              <meshStandardMaterial color={DANIEL.shoeStripe} />
-            </mesh>
-            <mesh position={[0, -0.06, 0.21]}>
-              <boxGeometry args={[0.26, 0.08, 0.04]} />
-              <meshStandardMaterial color={DANIEL.shoeSole} />
-            </mesh>
-          </group>
-        ))}
+      const push = (x: number, y: number) => {
+        const idx = y * w + x;
+        if (!visited[idx] && isWhite(x, y)) {
+          visited[idx] = 1;
+          queue.push(x, y);
+        }
+      };
 
-        {/* hoodie torso */}
-        <mesh position={[0, 0.78, 0]} castShadow>
-          <capsuleGeometry args={[0.45, 0.45, 8, 24]} />
-          <meshStandardMaterial color={DANIEL.hoodie} roughness={0.75} />
-        </mesh>
-        {/* front pocket pouch */}
-        <mesh position={[0, 0.62, 0.35]} rotation={[0.15, 0, 0]}>
-          <boxGeometry args={[0.55, 0.22, 0.08]} />
-          <meshStandardMaterial color={DANIEL.hoodieShade} roughness={0.85} />
-        </mesh>
-        {/* hood at back of neck */}
-        <mesh position={[0, 1.18, -0.22]}>
-          <sphereGeometry args={[0.32, 16, 16]} />
-          <meshStandardMaterial color={DANIEL.hoodieShade} roughness={0.8} />
-        </mesh>
-        {/* drawstrings */}
-        <mesh position={[-0.06, 1.05, 0.38]}>
-          <cylinderGeometry args={[0.012, 0.012, 0.22, 8]} />
-          <meshStandardMaterial color={DANIEL.drawstring} />
-        </mesh>
-        <mesh position={[0.06, 1.05, 0.38]}>
-          <cylinderGeometry args={[0.012, 0.012, 0.22, 8]} />
-          <meshStandardMaterial color={DANIEL.drawstring} />
-        </mesh>
+      for (let x = 0; x < w; x++) {
+        push(x, 0);
+        push(x, h - 1);
+      }
+      for (let y = 0; y < h; y++) {
+        push(0, y);
+        push(w - 1, y);
+      }
 
-        {/* arms */}
-        <mesh position={[-0.55, 0.85, 0]} rotation={[0, 0, 0.25]} castShadow>
-          <capsuleGeometry args={[0.13, 0.45, 8, 16]} />
-          <meshStandardMaterial color={DANIEL.hoodie} roughness={0.75} />
-        </mesh>
-        <mesh position={[0.55, 0.85, 0]} rotation={[0, 0, -0.25]} castShadow>
-          <capsuleGeometry args={[0.13, 0.45, 8, 16]} />
-          <meshStandardMaterial color={DANIEL.hoodie} roughness={0.75} />
-        </mesh>
-        {/* hands */}
-        <mesh position={[-0.72, 0.5, 0]}>
-          <sphereGeometry args={[0.13, 16, 16]} />
-          <meshStandardMaterial color={DANIEL.skin} roughness={0.6} />
-        </mesh>
-        <mesh position={[0.72, 0.5, 0]}>
-          <sphereGeometry args={[0.13, 16, 16]} />
-          <meshStandardMaterial color={DANIEL.skin} roughness={0.6} />
-        </mesh>
+      let qIdx = 0;
+      while (qIdx < queue.length) {
+        const cx = queue[qIdx++];
+        const cy = queue[qIdx++];
 
-        {/* head */}
-        <group position={[0, 1.55, 0]}>
-          <mesh castShadow>
-            <sphereGeometry args={[0.5, 32, 32]} />
-            <meshStandardMaterial color={DANIEL.skin} roughness={0.55} />
-          </mesh>
+        const neighbors = [
+          [cx - 1, cy],
+          [cx + 1, cy],
+          [cx, cy - 1],
+          [cx, cy + 1],
+        ];
 
-          {/* hair cap */}
-          <mesh position={[0, 0.18, -0.05]} rotation={[-0.1, 0, 0]}>
-            <sphereGeometry args={[0.52, 24, 24, 0, Math.PI * 2, 0, Math.PI / 1.7]} />
-            <meshStandardMaterial color={DANIEL.hair} roughness={0.9} />
-          </mesh>
-          {/* messy tufts */}
-          {tufts.map(([x, y, z, s], i) => (
-            <mesh key={i} position={[x, y, z]} rotation={[0.2, i, 0.1 * i]}>
-              <coneGeometry args={[s * 0.55, s * 1.1, 8]} />
-              <meshStandardMaterial color={DANIEL.hair} roughness={0.9} />
-            </mesh>
-          ))}
-          {/* side-swept fringe */}
-          <mesh position={[-0.05, 0.22, 0.4]} rotation={[0.4, -0.3, 0.2]}>
-            <coneGeometry args={[0.18, 0.4, 8]} />
-            <meshStandardMaterial color={DANIEL.hair} roughness={0.9} />
-          </mesh>
+        for (const [nx, ny] of neighbors) {
+          if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+            const nidx = ny * w + nx;
+            if (!visited[nidx] && isWhite(nx, ny)) {
+              visited[nidx] = 1;
+              queue.push(nx, ny);
+            }
+          }
+        }
+      }
 
-          {/* eyebrows */}
-          <mesh position={[-0.18, 0.12, 0.42]} rotation={[0, 0, 0.1]}>
-            <boxGeometry args={[0.16, 0.04, 0.04]} />
-            <meshStandardMaterial color={DANIEL.brow} />
-          </mesh>
-          <mesh position={[0.18, 0.12, 0.42]} rotation={[0, 0, -0.1]}>
-            <boxGeometry args={[0.16, 0.04, 0.04]} />
-            <meshStandardMaterial color={DANIEL.brow} />
-          </mesh>
+      for (let i = 0; i < w * h; i++) {
+        if (visited[i]) {
+          data[i * 4 + 3] = 0;
+        }
+      }
 
-          {/* large round eyes */}
-          {[-0.17, 0.17].map((x) => (
-            <group key={x} position={[x, 0, 0.4]}>
-              <mesh>
-                <sphereGeometry args={[0.13, 24, 24]} />
-                <meshStandardMaterial color={DANIEL.eyeWhite} />
-              </mesh>
-              <mesh position={[0, -0.01, 0.08]}>
-                <sphereGeometry args={[0.09, 20, 20]} />
-                <meshStandardMaterial color={DANIEL.iris} />
-              </mesh>
-              <mesh position={[0, -0.01, 0.13]}>
-                <sphereGeometry args={[0.055, 16, 16]} />
-                <meshStandardMaterial color={DANIEL.pupil} />
-              </mesh>
-              <mesh position={[0.025, 0.03, 0.16]}>
-                <sphereGeometry args={[0.02, 12, 12]} />
-                <meshStandardMaterial color="white" emissive="white" emissiveIntensity={0.5} />
-              </mesh>
-            </group>
-          ))}
+      ctx.putImageData(imgData, 0, 0);
+      resolveImageFringes(canvas, ctx, imgData, visited);
+      if (isMounted) {
+        setProcessedSrc(canvas.toDataURL());
+      }
+    };
+    img.src = src;
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [src, threshold]);
 
-          {/* button nose */}
-          <mesh position={[0, -0.05, 0.48]}>
-            <sphereGeometry args={[0.05, 16, 16]} />
-            <meshStandardMaterial color={DANIEL.skin} roughness={0.5} />
-          </mesh>
+  return processedSrc;
+}
 
-          {/* rosy cheeks */}
-          <mesh position={[-0.3, -0.1, 0.35]}>
-            <sphereGeometry args={[0.07, 16, 16]} />
-            <meshStandardMaterial color={DANIEL.cheek} transparent opacity={0.6} />
-          </mesh>
-          <mesh position={[0.3, -0.1, 0.35]}>
-            <sphereGeometry args={[0.07, 16, 16]} />
-            <meshStandardMaterial color={DANIEL.cheek} transparent opacity={0.6} />
-          </mesh>
+// Helper to smooth out rough white edges from chroma-keying
+function resolveImageFringes(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D, imgData: ImageData, visited: Uint8Array) {
+  const w = canvas.width;
+  const h = canvas.height;
+  const data = imgData.data;
 
-          {/* gentle smile */}
-          <mesh position={[0, -0.2, 0.42]} rotation={[0, 0, Math.PI]}>
-            <torusGeometry args={[0.08, 0.018, 10, 20, Math.PI]} />
-            <meshStandardMaterial color="#7a2a1a" />
-          </mesh>
-        </group>
-      </group>
-    </group>
-  );
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const idx = y * w + x;
+      if (!visited[idx]) {
+        const neighbors = [
+          (y - 1) * w + x,
+          (y + 1) * w + x,
+          y * w + (x - 1),
+          y * w + (x + 1)
+        ];
+        let transparentCount = 0;
+        for (const n of neighbors) {
+          if (visited[n]) transparentCount++;
+        }
+        if (transparentCount > 0) {
+          const pixelIdx = idx * 4;
+          const r = data[pixelIdx];
+          const g = data[pixelIdx + 1];
+          const b = data[pixelIdx + 2];
+          if (r > 200 && g > 200 && b > 200) {
+            data[pixelIdx + 3] = Math.max(0, data[pixelIdx + 3] - (transparentCount * 60));
+          }
+        }
+      }
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
 }
 
 type StarItem = { id: number; x: number; y: number; speed: number };
-
-function JoyStar({ x, y }: { x: number; y: number }) {
-  const ref = useRef<THREE.Group>(null);
-  useFrame((_, dt) => {
-    if (ref.current) ref.current.rotation.y += dt * 2;
-  });
-  return (
-    <group ref={ref} position={[x, y, 0]}>
-      <mesh castShadow>
-        <icosahedronGeometry args={[0.4, 0]} />
-        <meshStandardMaterial
-          color="#facc15"
-          emissive="#fde047"
-          emissiveIntensity={0.8}
-          roughness={0.2}
-          metalness={0.3}
-        />
-      </mesh>
-      <pointLight color="#fde047" intensity={1.2} distance={3} />
-    </group>
-  );
-}
-
-function Scene({
-  charX,
-  stars,
-}: {
-  charX: number;
-  stars: StarItem[];
-}) {
-  return (
-    <>
-      <Sky sunPosition={[10, 8, 5]} turbidity={2} rayleigh={1} />
-      <ambientLight intensity={0.7} />
-      <directionalLight
-        position={[5, 10, 6]}
-        intensity={1.4}
-        castShadow
-        shadow-mapSize-width={1024}
-        shadow-mapSize-height={1024}
-      />
-      {/* ground */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
-        <planeGeometry args={[40, 40]} />
-        <meshStandardMaterial color="#86efac" />
-      </mesh>
-      {/* hills */}
-      <mesh position={[-4, 0.2, -3]} castShadow>
-        <sphereGeometry args={[1.4, 16, 16]} />
-        <meshStandardMaterial color="#4ade80" />
-      </mesh>
-      <mesh position={[4.5, 0.2, -2]} castShadow>
-        <sphereGeometry args={[1.8, 16, 16]} />
-        <meshStandardMaterial color="#22c55e" />
-      </mesh>
-      <ContactShadows position={[0, 0.01, 0]} opacity={0.4} blur={2} scale={10} />
-      <Character targetX={charX} />
-      {stars.map((s) => (
-        <JoyStar key={s.id} x={s.x} y={s.y} />
-      ))}
-    </>
-  );
-}
 
 interface Confetti {
   id: number;
@@ -357,8 +219,11 @@ const PLAY_BOUND = 3.2;
 
 function JoyCatcher() {
   const [started, setStarted] = useState(false);
-  const [charX, setCharX] = useState(0);
-  const charXRef = useRef(0);
+  const [targetX, setTargetX] = useState(0);
+  const [visualX, setVisualX] = useState(0);
+  const visualXRef = useRef(0);
+  const targetXRef = useRef(0);
+  
   const [stars, setStars] = useState<StarItem[]>([]);
   const starIdRef = useRef(0);
   const [score, setScore] = useState(0);
@@ -366,9 +231,21 @@ function JoyCatcher() {
   const [confetti, setConfetti] = useState<Confetti[]>([]);
   const confettiId = useRef(0);
 
+  // Animation states
+  const [actionState, setActionState] = useState<'none' | 'catch' | 'cheer'>('none');
+  const actionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Process white backgrounds dynamically in-browser
+  const transparentIdle = useTransparentImage(danielIdle);
+  const transparentRun = useTransparentImage(danielRun);
+  const transparentCatch = useTransparentImage(danielCatch);
+  const transparentCheer = useTransparentImage(danielCheer);
+  const transparentHills = useTransparentImage(bgHills, 245);
+  const transparentGround = useTransparentImage(bgGround, 245);
+
   useEffect(() => {
-    charXRef.current = charX;
-  }, [charX]);
+    targetXRef.current = targetX;
+  }, [targetX]);
 
   // Preload voices
   useEffect(() => {
@@ -388,7 +265,7 @@ function JoyCatcher() {
           id: ++starIdRef.current,
           x: (Math.random() - 0.5) * 2 * PLAY_BOUND,
           y: 8,
-          speed: 1.2 + Math.random() * 0.6,
+          speed: 1.5 + Math.random() * 0.8,
         },
       ]);
     }, 1400);
@@ -403,12 +280,20 @@ function JoyCatcher() {
     const step = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
+
+      // Interpolate character position
+      setVisualX((prev) => {
+        const next = prev + (targetXRef.current - prev) * Math.min(1, dt * 6);
+        visualXRef.current = next;
+        return next;
+      });
+
       setStars((prev) => {
         const next: StarItem[] = [];
         for (const s of prev) {
           const ny = s.y - s.speed * dt;
           // caught?
-          if (ny < 1.2 && Math.abs(s.x - charXRef.current) < 0.8) {
+          if (ny < 1.2 && Math.abs(s.x - visualXRef.current) < 0.8) {
             onCatch();
             continue;
           }
@@ -430,6 +315,18 @@ function JoyCatcher() {
     setScore((s) => s + 1);
     setPopup({ id: Date.now() + Math.random(), text: phrase.text });
     setTimeout(() => setPopup(null), 1800);
+
+    // Trigger catch & cheer sprites sequence
+    if (actionTimeoutRef.current) clearTimeout(actionTimeoutRef.current);
+    setActionState('catch');
+    
+    actionTimeoutRef.current = setTimeout(() => {
+      setActionState('cheer');
+      actionTimeoutRef.current = setTimeout(() => {
+        setActionState('none');
+      }, 1000);
+    }, 400); // Wait 400ms in catch pose, then cheer, then reset
+
     // confetti burst
     const burst: Confetti[] = [];
     for (let i = 0; i < 50; i++) {
@@ -456,38 +353,103 @@ function JoyCatcher() {
     const rect = e.currentTarget.getBoundingClientRect();
     const ratio = (e.clientX - rect.left) / rect.width; // 0..1
     const x = (ratio - 0.5) * 2 * PLAY_BOUND;
-    setCharX(Math.max(-PLAY_BOUND, Math.min(PLAY_BOUND, x)));
+    setTargetX(Math.max(-PLAY_BOUND, Math.min(PLAY_BOUND, x)));
   };
 
   const handlePlay = () => {
-    // unlock + pre-warm all affirmation audio on the user gesture (Android)
     primeAudio();
     setStarted(true);
   };
 
+  // Determine current active sprite and flip state
+  let currentSprite = transparentIdle;
+  let isFlipped = false;
+
+  const isMoving = Math.abs(targetX - visualX) > 0.05;
+
+  if (actionState === 'catch') {
+    currentSprite = transparentCatch;
+  } else if (actionState === 'cheer') {
+    currentSprite = transparentCheer;
+  } else if (isMoving) {
+    currentSprite = transparentRun;
+    isFlipped = targetX < visualX; // Face left if moving left
+  }
+
+  // Convert standard X coordinates [-3.2, 3.2] and Y coordinates [-1, 8] to viewport %
+  const getXPercent = (x: number) => ((x - (-3.2)) / 6.4) * 100;
+  const getYPercent = (y: number) => ((y - (-1)) / 9) * 100;
 
   return (
     <div className="fixed inset-0 overflow-hidden select-none touch-none bg-sky-300">
       <div
-        className="absolute inset-0"
+        className="absolute inset-0 game-viewport"
         onPointerDown={handleTap}
         style={{ touchAction: "none" }}
       >
-        <Canvas
-          shadows
-          dpr={[1, 2]}
-          camera={{ position: [0, 2.8, 7], fov: 55 }}
-          gl={{ antialias: true }}
-        >
-          <Suspense fallback={null}>
-            <Scene charX={charX} stars={stars} />
-          </Suspense>
-        </Canvas>
+        {/* Parallax Background */}
+        <div 
+          className="parallax-layer parallax-sky"
+          style={{ 
+            backgroundImage: `url(${bgSky})`,
+            transform: `translateX(${-visualX * 6}px)` 
+          }}
+        />
+        <div 
+          className="parallax-layer parallax-hills"
+          style={{ 
+            backgroundImage: `url(${transparentHills})`,
+            transform: `translateX(${-visualX * 24}px)` 
+          }}
+        />
+        <div 
+          className="parallax-layer parallax-ground"
+          style={{ 
+            backgroundImage: `url(${transparentGround})`,
+            transform: `translateX(${-visualX * 45}px)` 
+          }}
+        />
+
+        {/* 2D Daniel Sprite */}
+        {started && (
+          <div 
+            className="character-sprite-container"
+            style={{
+              left: `${getXPercent(visualX)}%`,
+              bottom: `12%`, // Standing on grass platform
+            }}
+          >
+            <img 
+              src={currentSprite} 
+              alt="Daniel"
+              className="character-sprite"
+              style={{
+                transform: isFlipped ? "scaleX(-1)" : "scaleX(1)",
+              }}
+            />
+          </div>
+        )}
+
+        {/* 2D Stars falling */}
+        {started && stars.map((s) => (
+          <div
+            key={s.id}
+            className="star-2d"
+            style={{
+              left: `${getXPercent(s.x)}%`,
+              bottom: `${getYPercent(s.y)}%`,
+            }}
+          >
+            <svg viewBox="0 0 24 24" className="star-svg">
+              <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
+            </svg>
+          </div>
+        ))}
       </div>
 
       {/* Score */}
       {started && (
-        <div className="absolute top-4 left-4 flex items-center gap-2 bg-white/80 backdrop-blur rounded-full px-4 py-2 shadow-lg pointer-events-none">
+        <div className="absolute top-4 left-4 flex items-center gap-2 bg-white/80 backdrop-blur rounded-full px-4 py-2 shadow-lg pointer-events-none z-20">
           <Star className="w-7 h-7 text-yellow-400 fill-yellow-400" />
           <span className="text-2xl font-black text-pink-600">{score}</span>
         </div>
@@ -495,7 +457,7 @@ function JoyCatcher() {
 
       {/* Hearts indicator */}
       {started && (
-        <div className="absolute top-4 right-4 bg-white/80 backdrop-blur rounded-full px-3 py-2 shadow-lg pointer-events-none">
+        <div className="absolute top-4 right-4 bg-white/80 backdrop-blur rounded-full px-3 py-2 shadow-lg pointer-events-none z-20">
           <Heart className="w-7 h-7 text-pink-500 fill-pink-500" />
         </div>
       )}
@@ -503,10 +465,10 @@ function JoyCatcher() {
       {/* Tap hint arrows */}
       {started && score < 1 && (
         <>
-          <div className="absolute left-4 bottom-1/3 text-white text-7xl font-black drop-shadow-lg animate-pulse pointer-events-none">
+          <div className="absolute left-4 bottom-1/3 text-white text-7xl font-black drop-shadow-lg animate-pulse pointer-events-none z-20">
             ←
           </div>
-          <div className="absolute right-4 bottom-1/3 text-white text-7xl font-black drop-shadow-lg animate-pulse pointer-events-none">
+          <div className="absolute right-4 bottom-1/3 text-white text-7xl font-black drop-shadow-lg animate-pulse pointer-events-none z-20">
             →
           </div>
         </>
@@ -516,7 +478,7 @@ function JoyCatcher() {
       {popup && (
         <div
           key={popup.id}
-          className="absolute inset-x-0 top-1/4 flex justify-center pointer-events-none px-6"
+          className="absolute inset-x-0 top-1/4 flex justify-center pointer-events-none px-6 z-30"
         >
           <div className="affirm-pop bg-gradient-to-br from-pink-400 via-fuchsia-500 to-purple-500 text-white text-4xl sm:text-6xl font-black px-8 py-6 rounded-3xl shadow-2xl text-center border-4 border-white">
             {popup.text}
@@ -526,7 +488,7 @@ function JoyCatcher() {
 
       {/* Confetti */}
       {confetti.length > 0 && (
-        <div className="absolute left-1/2 top-2/3 pointer-events-none">
+        <div className="absolute left-1/2 top-2/3 pointer-events-none z-20">
           {confetti.map((p) => (
             <span
               key={p.id}
@@ -546,7 +508,7 @@ function JoyCatcher() {
 
       {/* Start screen */}
       {!started && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-b from-sky-400/70 to-indigo-500/70 backdrop-blur-sm">
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-b from-sky-400/70 to-indigo-500/70 backdrop-blur-sm z-30">
           <div className="flex items-center gap-3 mb-6">
             <Smile className="w-14 h-14 text-yellow-300 fill-yellow-300" />
             <h1 className="text-5xl sm:text-7xl font-black text-white drop-shadow-lg">
@@ -571,3 +533,4 @@ function JoyCatcher() {
     </div>
   );
 }
+
