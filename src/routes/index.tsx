@@ -45,32 +45,41 @@ const CONFETTI_COLORS = [
   "#ff3b8b", "#ffd93d", "#6bcB77", "#4d96ff", "#ff9f1c", "#c084fc", "#22d3ee",
 ];
 
-// Pre-warmed Audio pool for instant playback (no TTS latency)
-const audioCache = new Map<string, HTMLAudioElement>();
-function getAudio(url: string): HTMLAudioElement {
-  let a = audioCache.get(url);
-  if (!a) {
-    a = new Audio(url);
-    a.preload = "auto";
-    audioCache.set(url, a);
-  }
-  return a;
-}
 function primeAudio() {
-  if (typeof window === "undefined") return;
-  AFFIRMATIONS.forEach((a) => {
-    const el = getAudio(a.url);
-    el.muted = true;
-    el.play().then(() => { el.pause(); el.currentTime = 0; el.muted = false; }).catch(() => { el.muted = false; });
-  });
-}
-function speakAffirmation(url: string) {
+  if (typeof window === "undefined" || !window.speechSynthesis) return;
   try {
-    const el = getAudio(url);
-    el.currentTime = 0;
-    el.volume = 1;
-    void el.play().catch(() => {});
+    const utterance = new SpeechSynthesisUtterance("");
+    window.speechSynthesis.speak(utterance);
   } catch {}
+}
+function speakAffirmation(text: string) {
+  if (typeof window === "undefined" || !window.speechSynthesis) return;
+  try {
+    // Cancel any speaking currently in progress to prevent overlaps
+    window.speechSynthesis.cancel();
+    
+    const utterance = new SpeechSynthesisUtterance(text);
+    const voices = window.speechSynthesis.getVoices();
+    
+    // Choose a friendly English voice (such as Google US English, Samantha, or Natural)
+    const preferredVoice = voices.find(
+      (v) =>
+        v.lang.startsWith("en") &&
+        (v.name.includes("Google") || v.name.includes("Natural") || v.name.includes("Samantha"))
+    ) || voices.find((v) => v.lang.startsWith("en"));
+    
+    if (preferredVoice) {
+      utterance.voice = preferredVoice;
+    }
+    
+    utterance.rate = 0.9;   // Slower pacing for child comprehension
+    utterance.pitch = 1.15; // Friendly, slightly higher pitch
+    utterance.volume = 1.0;
+    
+    window.speechSynthesis.speak(utterance);
+  } catch (e) {
+    console.error("Speech synthesis failed:", e);
+  }
 }
 
 function useTransparentImage(src: string, threshold = 240): string {
@@ -311,7 +320,7 @@ function JoyCatcher() {
 
   const onCatch = () => {
     const phrase = AFFIRMATIONS[Math.floor(Math.random() * AFFIRMATIONS.length)];
-    speakAffirmation(phrase.url);
+    speakAffirmation(phrase.text);
     setScore((s) => s + 1);
     setPopup({ id: Date.now() + Math.random(), text: phrase.text });
     setTimeout(() => setPopup(null), 1800);
