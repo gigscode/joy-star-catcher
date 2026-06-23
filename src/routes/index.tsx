@@ -460,14 +460,11 @@ function JoyCatcher() {
   };
 
   const handlePlay = () => {
-    // unlock audio
-    if (typeof window !== "undefined" && window.speechSynthesis) {
-      const u = new SpeechSynthesisUtterance(" ");
-      u.volume = 0;
-      window.speechSynthesis.speak(u);
-    }
+    // unlock + pre-warm all affirmation audio on the user gesture (Android)
+    primeAudio();
     setStarted(true);
   };
+
 
   return (
     <div className="fixed inset-0 overflow-hidden select-none touch-none bg-sky-300">
