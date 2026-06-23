@@ -31,85 +31,229 @@ const CONFETTI_COLORS = [
   "#ff3b8b", "#ffd93d", "#6bcB77", "#4d96ff", "#ff9f1c", "#c084fc", "#22d3ee",
 ];
 
+// Daniel palette from the character bible
+const DANIEL = {
+  skin: "#f5cfa8",
+  cheek: "#f4a896",
+  hair: "#3a2a21",
+  brow: "#2a1a14",
+  eyeWhite: "#ffffff",
+  iris: "#5a3a22",
+  pupil: "#0f0a08",
+  hoodie: "#d97706",
+  hoodieShade: "#b45309",
+  drawstring: "#fffaf0",
+  pants: "#1a1a1a",
+  shoe: "#111111",
+  shoeSole: "#ffffff",
+  shoeStripe: "#dc2626",
+};
+
 function speakAffirmation(text: string) {
   if (typeof window === "undefined" || !window.speechSynthesis) return;
   try {
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    u.pitch = 1.6;
+    // Daniel is a 5-year-old boy: slightly higher than adult male, not squeaky
+    u.pitch = 1.35;
     u.rate = 0.95;
     u.volume = 1;
     const voices = window.speechSynthesis.getVoices();
     const preferred =
-      voices.find((v) => /female|samantha|karen|google us english/i.test(v.name)) ||
+      voices.find((v) => /child|kid|boy/i.test(v.name)) ||
+      voices.find((v) => /daniel|aaron|alex|fred|google uk english male/i.test(v.name)) ||
       voices.find((v) => v.lang.startsWith("en"));
     if (preferred) u.voice = preferred;
     window.speechSynthesis.speak(u);
   } catch {}
 }
 
+// A stylized "Daniel" — 5yr boy, orange hoodie, black cargo joggers,
+// black high-top sneakers, messy dark-brown hair, large brown eyes.
 function Character({ targetX }: { targetX: number }) {
   const group = useRef<THREE.Group>(null);
-  const body = useRef<THREE.Mesh>(null);
+  const torso = useRef<THREE.Group>(null);
   useFrame((_, dt) => {
     if (!group.current) return;
     group.current.position.x += (targetX - group.current.position.x) * Math.min(1, dt * 6);
     const t = performance.now() / 400;
-    group.current.position.y = Math.sin(t) * 0.08;
-    if (body.current) body.current.rotation.y = Math.sin(t * 0.5) * 0.15;
+    group.current.position.y = Math.sin(t) * 0.06;
+    if (torso.current) torso.current.rotation.y = Math.sin(t * 0.5) * 0.12;
   });
+
+  // pre-computed messy hair tufts (deterministic)
+  const tufts: Array<[number, number, number, number]> = [
+    [0, 0.28, -0.05, 0.34],
+    [-0.22, 0.22, 0.05, 0.26],
+    [0.22, 0.22, 0.05, 0.26],
+    [-0.12, 0.34, 0.12, 0.22],
+    [0.12, 0.34, 0.12, 0.22],
+    [-0.28, 0.05, -0.05, 0.24],
+    [0.28, 0.05, -0.05, 0.24],
+    [0, 0.18, 0.28, 0.22],
+    [-0.18, 0.4, 0.0, 0.18],
+    [0.2, 0.38, -0.1, 0.18],
+  ];
+
   return (
     <group ref={group} position={[0, 0, 0]}>
-      {/* body */}
-      <mesh ref={body} position={[0, 0.9, 0]} castShadow>
-        <capsuleGeometry args={[0.65, 0.7, 8, 24]} />
-        <meshStandardMaterial color="#2dd4bf" roughness={0.4} />
-      </mesh>
-      {/* belly */}
-      <mesh position={[0, 0.7, 0.55]}>
-        <sphereGeometry args={[0.35, 24, 24]} />
-        <meshStandardMaterial color="#ccfbf1" roughness={0.6} />
-      </mesh>
-      {/* eyes */}
-      <mesh position={[-0.25, 1.15, 0.55]}>
-        <sphereGeometry args={[0.18, 24, 24]} />
-        <meshStandardMaterial color="white" />
-      </mesh>
-      <mesh position={[0.25, 1.15, 0.55]}>
-        <sphereGeometry args={[0.18, 24, 24]} />
-        <meshStandardMaterial color="white" />
-      </mesh>
-      <mesh position={[-0.25, 1.17, 0.7]}>
-        <sphereGeometry args={[0.07, 16, 16]} />
-        <meshStandardMaterial color="#0f172a" />
-      </mesh>
-      <mesh position={[0.25, 1.17, 0.7]}>
-        <sphereGeometry args={[0.07, 16, 16]} />
-        <meshStandardMaterial color="#0f172a" />
-      </mesh>
-      {/* cheeks */}
-      <mesh position={[-0.42, 0.95, 0.5]}>
-        <sphereGeometry args={[0.1, 16, 16]} />
-        <meshStandardMaterial color="#fb7185" />
-      </mesh>
-      <mesh position={[0.42, 0.95, 0.5]}>
-        <sphereGeometry args={[0.1, 16, 16]} />
-        <meshStandardMaterial color="#fb7185" />
-      </mesh>
-      {/* mouth */}
-      <mesh position={[0, 0.92, 0.62]} rotation={[0, 0, 0]}>
-        <torusGeometry args={[0.13, 0.04, 12, 24, Math.PI]} />
-        <meshStandardMaterial color="#0f172a" />
-      </mesh>
-      {/* feet */}
-      <mesh position={[-0.3, 0.1, 0.2]} castShadow>
-        <sphereGeometry args={[0.18, 16, 16]} />
-        <meshStandardMaterial color="#0d9488" />
-      </mesh>
-      <mesh position={[0.3, 0.1, 0.2]} castShadow>
-        <sphereGeometry args={[0.18, 16, 16]} />
-        <meshStandardMaterial color="#0d9488" />
-      </mesh>
+      <group ref={torso}>
+        {/* legs — black cargo joggers */}
+        <mesh position={[-0.18, 0.28, 0]} castShadow>
+          <cylinderGeometry args={[0.16, 0.18, 0.55, 16]} />
+          <meshStandardMaterial color={DANIEL.pants} roughness={0.85} />
+        </mesh>
+        <mesh position={[0.18, 0.28, 0]} castShadow>
+          <cylinderGeometry args={[0.16, 0.18, 0.55, 16]} />
+          <meshStandardMaterial color={DANIEL.pants} roughness={0.85} />
+        </mesh>
+
+        {/* shoes — black high-tops with white sole + red stripe */}
+        {[-0.18, 0.18].map((x) => (
+          <group key={x} position={[x, 0.02, 0.06]}>
+            <mesh castShadow>
+              <boxGeometry args={[0.26, 0.18, 0.42]} />
+              <meshStandardMaterial color={DANIEL.shoe} roughness={0.6} />
+            </mesh>
+            <mesh position={[0, -0.08, 0]}>
+              <boxGeometry args={[0.28, 0.05, 0.44]} />
+              <meshStandardMaterial color={DANIEL.shoeSole} />
+            </mesh>
+            <mesh position={[0, -0.05, 0]}>
+              <boxGeometry args={[0.29, 0.015, 0.45]} />
+              <meshStandardMaterial color={DANIEL.shoeStripe} />
+            </mesh>
+            <mesh position={[0, -0.06, 0.21]}>
+              <boxGeometry args={[0.26, 0.08, 0.04]} />
+              <meshStandardMaterial color={DANIEL.shoeSole} />
+            </mesh>
+          </group>
+        ))}
+
+        {/* hoodie torso */}
+        <mesh position={[0, 0.78, 0]} castShadow>
+          <capsuleGeometry args={[0.45, 0.45, 8, 24]} />
+          <meshStandardMaterial color={DANIEL.hoodie} roughness={0.75} />
+        </mesh>
+        {/* front pocket pouch */}
+        <mesh position={[0, 0.62, 0.35]} rotation={[0.15, 0, 0]}>
+          <boxGeometry args={[0.55, 0.22, 0.08]} />
+          <meshStandardMaterial color={DANIEL.hoodieShade} roughness={0.85} />
+        </mesh>
+        {/* hood at back of neck */}
+        <mesh position={[0, 1.18, -0.22]}>
+          <sphereGeometry args={[0.32, 16, 16]} />
+          <meshStandardMaterial color={DANIEL.hoodieShade} roughness={0.8} />
+        </mesh>
+        {/* drawstrings */}
+        <mesh position={[-0.06, 1.05, 0.38]}>
+          <cylinderGeometry args={[0.012, 0.012, 0.22, 8]} />
+          <meshStandardMaterial color={DANIEL.drawstring} />
+        </mesh>
+        <mesh position={[0.06, 1.05, 0.38]}>
+          <cylinderGeometry args={[0.012, 0.012, 0.22, 8]} />
+          <meshStandardMaterial color={DANIEL.drawstring} />
+        </mesh>
+
+        {/* arms */}
+        <mesh position={[-0.55, 0.85, 0]} rotation={[0, 0, 0.25]} castShadow>
+          <capsuleGeometry args={[0.13, 0.45, 8, 16]} />
+          <meshStandardMaterial color={DANIEL.hoodie} roughness={0.75} />
+        </mesh>
+        <mesh position={[0.55, 0.85, 0]} rotation={[0, 0, -0.25]} castShadow>
+          <capsuleGeometry args={[0.13, 0.45, 8, 16]} />
+          <meshStandardMaterial color={DANIEL.hoodie} roughness={0.75} />
+        </mesh>
+        {/* hands */}
+        <mesh position={[-0.72, 0.5, 0]}>
+          <sphereGeometry args={[0.13, 16, 16]} />
+          <meshStandardMaterial color={DANIEL.skin} roughness={0.6} />
+        </mesh>
+        <mesh position={[0.72, 0.5, 0]}>
+          <sphereGeometry args={[0.13, 16, 16]} />
+          <meshStandardMaterial color={DANIEL.skin} roughness={0.6} />
+        </mesh>
+
+        {/* head */}
+        <group position={[0, 1.55, 0]}>
+          <mesh castShadow>
+            <sphereGeometry args={[0.5, 32, 32]} />
+            <meshStandardMaterial color={DANIEL.skin} roughness={0.55} />
+          </mesh>
+
+          {/* hair cap */}
+          <mesh position={[0, 0.18, -0.05]} rotation={[-0.1, 0, 0]}>
+            <sphereGeometry args={[0.52, 24, 24, 0, Math.PI * 2, 0, Math.PI / 1.7]} />
+            <meshStandardMaterial color={DANIEL.hair} roughness={0.9} />
+          </mesh>
+          {/* messy tufts */}
+          {tufts.map(([x, y, z, s], i) => (
+            <mesh key={i} position={[x, y, z]} rotation={[0.2, i, 0.1 * i]}>
+              <coneGeometry args={[s * 0.55, s * 1.1, 8]} />
+              <meshStandardMaterial color={DANIEL.hair} roughness={0.9} />
+            </mesh>
+          ))}
+          {/* side-swept fringe */}
+          <mesh position={[-0.05, 0.22, 0.4]} rotation={[0.4, -0.3, 0.2]}>
+            <coneGeometry args={[0.18, 0.4, 8]} />
+            <meshStandardMaterial color={DANIEL.hair} roughness={0.9} />
+          </mesh>
+
+          {/* eyebrows */}
+          <mesh position={[-0.18, 0.12, 0.42]} rotation={[0, 0, 0.1]}>
+            <boxGeometry args={[0.16, 0.04, 0.04]} />
+            <meshStandardMaterial color={DANIEL.brow} />
+          </mesh>
+          <mesh position={[0.18, 0.12, 0.42]} rotation={[0, 0, -0.1]}>
+            <boxGeometry args={[0.16, 0.04, 0.04]} />
+            <meshStandardMaterial color={DANIEL.brow} />
+          </mesh>
+
+          {/* large round eyes */}
+          {[-0.17, 0.17].map((x) => (
+            <group key={x} position={[x, 0, 0.4]}>
+              <mesh>
+                <sphereGeometry args={[0.13, 24, 24]} />
+                <meshStandardMaterial color={DANIEL.eyeWhite} />
+              </mesh>
+              <mesh position={[0, -0.01, 0.08]}>
+                <sphereGeometry args={[0.09, 20, 20]} />
+                <meshStandardMaterial color={DANIEL.iris} />
+              </mesh>
+              <mesh position={[0, -0.01, 0.13]}>
+                <sphereGeometry args={[0.055, 16, 16]} />
+                <meshStandardMaterial color={DANIEL.pupil} />
+              </mesh>
+              <mesh position={[0.025, 0.03, 0.16]}>
+                <sphereGeometry args={[0.02, 12, 12]} />
+                <meshStandardMaterial color="white" emissive="white" emissiveIntensity={0.5} />
+              </mesh>
+            </group>
+          ))}
+
+          {/* button nose */}
+          <mesh position={[0, -0.05, 0.48]}>
+            <sphereGeometry args={[0.05, 16, 16]} />
+            <meshStandardMaterial color={DANIEL.skin} roughness={0.5} />
+          </mesh>
+
+          {/* rosy cheeks */}
+          <mesh position={[-0.3, -0.1, 0.35]}>
+            <sphereGeometry args={[0.07, 16, 16]} />
+            <meshStandardMaterial color={DANIEL.cheek} transparent opacity={0.6} />
+          </mesh>
+          <mesh position={[0.3, -0.1, 0.35]}>
+            <sphereGeometry args={[0.07, 16, 16]} />
+            <meshStandardMaterial color={DANIEL.cheek} transparent opacity={0.6} />
+          </mesh>
+
+          {/* gentle smile */}
+          <mesh position={[0, -0.2, 0.42]} rotation={[0, 0, Math.PI]}>
+            <torusGeometry args={[0.08, 0.018, 10, 20, Math.PI]} />
+            <meshStandardMaterial color="#7a2a1a" />
+          </mesh>
+        </group>
+      </group>
     </group>
   );
 }
