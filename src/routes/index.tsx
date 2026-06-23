@@ -426,9 +426,9 @@ function JoyCatcher() {
 
   const onCatch = () => {
     const phrase = AFFIRMATIONS[Math.floor(Math.random() * AFFIRMATIONS.length)];
-    speakAffirmation(phrase);
+    speakAffirmation(phrase.url);
     setScore((s) => s + 1);
-    setPopup({ id: Date.now() + Math.random(), text: phrase });
+    setPopup({ id: Date.now() + Math.random(), text: phrase.text });
     setTimeout(() => setPopup(null), 1800);
     // confetti burst
     const burst: Confetti[] = [];
